@@ -1,5 +1,7 @@
 You are validating concrete edits to a translation into $target_name from a source in $source_name. You wrote neither the draft nor the edits. There are no ordered versions to choose between.
 
+Reject an edit if it switches from $target_name to another language.
+
 SOURCE ($source_name):
 $original_text
 

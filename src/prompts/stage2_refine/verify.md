@@ -1,5 +1,7 @@
 You are comparing two $target_name translations of the same $source_name source. You wrote neither of them.
 
+Reject a patched version if it switches from $target_name to another language.
+
 SOURCE ($source_name):
 $original_text
 

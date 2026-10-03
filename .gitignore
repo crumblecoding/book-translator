@@ -62,3 +62,6 @@ nltk_data/
 
 # Serena MCP workspace cache
 .serena/
+
+# Custom
+shared_glossaries/

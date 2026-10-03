@@ -237,7 +237,7 @@ def port_free() -> bool:
     with socket.socket() as probe:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            probe.bind(("0.0.0.0", PORT))
+            probe.bind(("127.0.0.1", PORT))
         except OSError:
             return False
     return True

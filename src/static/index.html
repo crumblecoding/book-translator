@@ -363,6 +363,15 @@
            divider rule instead of floating inside the padding. */
         .glossary-editor { display: flex; flex-direction: column; min-height: 0; padding: 0; background: #f1f2f4; }
         .glossary-editor-header { display: flex; flex: none; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--line); background: #f1f2f4; color: var(--ink); font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+        .glossary-header-actions { display: inline-flex; align-items: baseline; gap: 14px; }
+        .shared-glossary-dialog { width: min(460px, calc(100vw - 32px)); padding: 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); box-shadow: 0 18px 55px rgba(0,0,0,.24); }
+        .shared-glossary-dialog::backdrop { background: rgba(17,24,39,.42); }
+        .shared-glossary-dialog h2 { margin: 0 0 16px; font-size: 1rem; }
+        .shared-glossary-dialog p { margin: 12px 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+        .shared-glossary-dialog label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: .78rem; }
+        .shared-glossary-dialog input[type="text"] { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; font-size: .85rem; }
+        .shared-glossary-dialog .shared-toggle { display: flex; align-items: center; gap: 9px; color: var(--ink); }
+        .shared-glossary-dialog .shared-dialog-actions { display: flex; justify-content: flex-end; gap: 16px; margin-top: 22px; }
         .glossary-group { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: 0; }
         .glossary-group + .glossary-group { margin-top: 20px; }
         .glossary-group label { display: block; margin-bottom: 10px; }
@@ -534,6 +543,10 @@
         .review-signal-apply { flex: 0 0 auto; padding: 0; border: none; background: none; color: var(--accent); font: inherit; font-size: .68rem; font-weight: 600; letter-spacing: .05em; line-height: 1.2; text-transform: uppercase; cursor: pointer; }
         .review-signal-apply:hover { color: var(--accent-dark); text-decoration: underline; text-underline-offset: 3px; }
         .review-signal-apply:disabled { color: var(--faint); cursor: not-allowed; }
+        .review-signal-revert { display: block; margin: 0 0 5px auto; padding: 0; border: none; background: none; color: var(--accent); font: inherit; font-size: .68rem; font-weight: 600; letter-spacing: .05em; line-height: 1.2; text-transform: uppercase; cursor: pointer; }
+        .review-signal-revert:hover { color: var(--accent-dark); text-decoration: underline; text-underline-offset: 3px; }
+        .review-signal-revert:disabled { color: var(--faint); cursor: not-allowed; }
+        .panel-stage-actions { display: inline-flex; gap: 6px; }
         .review-final-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 9px; color: var(--ink); font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
         .review-final-label span { color: var(--faint); font-size: .68rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
         .review-final-text { display: block; width: 100%; min-height: 210px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit; font-size: .87rem; line-height: 1.7; resize: vertical; }
@@ -837,7 +850,10 @@
                     <section class="glossary-editor" aria-label="Glossary editor">
                     <h3 class="glossary-editor-header">
                         <span class="panel-title">Glossary</span>
-                        <button type="button" class="header-action" id="prepareBtn" disabled title="Upload a file first">→ PREPARE</button>
+                        <span class="glossary-header-actions">
+                            <button type="button" class="header-action" id="sharedGlossaryBtn">Shared Glossary</button>
+                            <button type="button" class="header-action" id="prepareBtn" disabled title="Upload a file first">→ PREPARE</button>
+                        </span>
                     </h3>
                     <div class="form-group glossary-group">
                         <textarea id="glossary" aria-label="Glossary" spellcheck="false" placeholder="Use: source =&gt; target | mode"></textarea>
@@ -866,7 +882,7 @@
                     <h2>Format and modes</h2>
                     <p class="form-hint" id="prepareStatus" data-default="Upload the source text with → 1 UPLOAD below, then click → PREPARE. The app scans the text, collects names and repeated terms, and fills the list on the left. This step is optional, but it improves translation quality and keeps names consistent across the whole book.">Upload the source text with → 1 UPLOAD below, then click → PREPARE. The app scans the text, collects names and repeated terms, and fills the list on the left. This step is optional, but it improves translation quality and keeps names consistent across the whole book.</p>
                     <p class="form-hint">Review the list before you start: delete what you don't need, correct a wrong translation, add what the scan missed. Entries can be edited until you click → 2 START.</p>
-                    <p class="form-hint">Format: <code>source term =&gt; translation [| mode] {note}</code><br>One entry per line. The <code>=&gt;</code> is required. If you omit the mode, inflectable is used.</p>
+                    <p class="form-hint">Format: <code>source term =&gt; translation [| mode] {note}</code><br>One entry per line. The <code>=&gt;</code> is required. If you omit the mode, inflectable is used. Prefix an entry with <code>$</code> to keep it specific to this book.</p>
                     <p class="form-hint">A <code>{note}</code> is optional free text in braces at the end of the line — anything you know that the source does not say outright: <code>Rom =&gt; Rom | inflectable {c'est un garçon de huit ans}</code>. The model is told to follow it; no test can check it. Write it in the language you are translating into, since that is the text the note has to shape. <strong>Copy frontier prompt</strong> can propose notes for you: the model identifies the book from its title and author, researches the lore, and adds a note only where it is certain. Read them before you paste the answer back — a wrong note is one the translator will obey.</p>
 
                     <section class="guide-section" aria-labelledby="guideModesTitle">
@@ -883,6 +899,17 @@
                 </div>
             </div>
         </form>
+        <dialog class="shared-glossary-dialog" id="sharedGlossaryDialog" aria-labelledby="sharedGlossaryDialogTitle">
+            <h2 id="sharedGlossaryDialogTitle">Shared Glossary</h2>
+            <label class="shared-toggle"><input type="checkbox" id="sharedGlossaryEnabled"> Enable shared glossary</label>
+            <label for="sharedGlossaryFilename">Glossary file name</label>
+            <input type="text" id="sharedGlossaryFilename" autocomplete="off" placeholder="my-glossary.txt">
+            <p id="sharedGlossaryHelp" role="status" aria-live="polite">Files are read from and saved in the app’s <code>shared_glossaries</code> folder. A missing file is created when you click Start.</p>
+            <div class="shared-dialog-actions">
+                <button type="button" class="header-action" id="cancelSharedGlossaryBtn">Cancel</button>
+                <button type="button" class="header-action" id="saveSharedGlossaryBtn">Save</button>
+            </div>
+        </dialog>
 
         <div class="copy-toast" id="copyToast" role="status" aria-live="polite" hidden></div>
 
@@ -907,7 +934,7 @@
                 <div class="text-panel panel-final">
                     <h3>
                         <span class="panel-title">Refinement</span>
-                        <button type="button" class="header-action" id="refineHeaderBtn">→ 3 CONTINUE</button>
+                        <span class="panel-stage-actions"><button type="button" class="header-action" id="refineHeaderBtn">→ 3 CONTINUE</button><button type="button" class="header-action" id="skipRefinementBtn">Skip</button></span>
                     </h3>
                     <div class="text-panel-content is-placeholder" id="literaryRefinement">No content yet</div>
                 </div>
@@ -1170,7 +1197,6 @@
                 <div class="review-header-actions">
                     <div class="review-header-controls">
                         <p class="review-summary" id="reviewSummary">Loading review chunks…</p>
-                        <button type="button" class="header-action review-cloud-all" id="reviewCloudAllBtn">Review all automatically ($)</button>
                         <fieldset class="review-filter" aria-label="Filter review chunks">
                             <button type="button" id="reviewNeedsFilter" aria-pressed="true">Needs review</button>
                             <button type="button" id="reviewAllFilter" aria-pressed="false">All chunks</button>
@@ -1217,7 +1243,6 @@
                                 <textarea class="review-final-text" id="reviewFinalText" spellcheck="true"></textarea>
                                 <div class="review-actions">
                                     <button type="button" class="review-action" id="reviewApplyAllBtn" aria-label="Apply all proposed fixes to Final" disabled>Apply proposed fixes</button>
-                                    <button type="button" class="review-action" id="reviewCloudChunkBtn" disabled>Review chunk automatically</button>
                                     <button type="button" class="review-action is-primary" id="reviewSaveBtn" disabled>Save final</button>
                                     <label class="sr-only" for="reviewAlternativeCount">Number of alternatives</label>
                                     <select class="review-count" id="reviewAlternativeCount">
@@ -1225,6 +1250,7 @@
                                         <option value="3">3</option>
                                     </select>
                                     <button type="button" class="review-action" id="reviewGenerateBtn">Generate 2 alternatives</button>
+                                    <button type="button" class="review-action" id="reviewRevertAllBtn">Revert all</button>
                                     <span class="review-action-status" id="reviewActionStatus" role="status" aria-live="polite"></span>
                                 </div>
                             </section>
@@ -1262,7 +1288,7 @@
                 <p>Tolmach is provided “as is”, without warranties of any kind. The author (KazKozDev) and contributors accept no liability for any use of the software or its output. Tolmach is not affiliated with or endorsed by the providers of any third-party models; all trademarks belong to their respective owners.</p>
                 <p>Source code: <a href="https://github.com/KazKozDev/book-translator" target="_blank" rel="noopener noreferrer">https://github.com/KazKozDev/book-translator</a></p>
             </div>
-            <p>The ($) marker means an optional paid request to the external frontier model selected in Settings. It works only after you choose a provider and enter a valid API key; the provider may charge your account under its own pricing. These are the two points where a frontier model adds the most value: Verify automatically ($) checks the glossary before translation, improving terminology consistency across the entire book, while Review all automatically ($) evaluates the proposed refinement fixes for every open chunk and saves substantial manual review time. You should still review the final text.</p>
+            <p>The ($) marker means an optional paid request to the external frontier model selected in Settings. It works only after you choose a provider and enter a valid API key; the provider may charge your account under its own pricing. Verify automatically ($) checks the glossary before translation and shows proposed changes for your approval.</p>
         </footer>
     </div>
 
@@ -1283,6 +1309,7 @@
         const SOURCE_PREVIEW_LIMIT = 100000;
         const PANEL_PREVIEW_LIMIT = 12000;
         let selectedFile = null;
+        let currentTranslationOriginalFilename = null;
         let sourcePreviewToken = 0;
         // Title and author as the book file itself states them. Empty for a
         // plain TXT upload, which carries no metadata — the copied frontier
@@ -1377,7 +1404,9 @@
 
         function setContinueEnabled(enabled) {
             const btn = document.getElementById('refineHeaderBtn');
+            const skip = document.getElementById('skipRefinementBtn');
             if (btn) btn.disabled = !enabled;
+            if (skip) skip.disabled = !enabled;
             setTestButtonsEnabled('1', enabled);
             draftReadyForRefine = !!enabled;
         }
@@ -1414,6 +1443,71 @@
             targetLanguage: 'workspaceTargetLanguage',
             genre: 'workspaceGenre',
         };
+        const SHARED_GLOSSARY_ENABLED_KEY = 'sharedGlossaryEnabled';
+        const SHARED_GLOSSARY_FILENAME_KEY = 'sharedGlossaryFilename';
+
+        function sharedGlossarySettings() {
+            let enabled = false;
+            let filename = '';
+            try {
+                enabled = localStorage.getItem(SHARED_GLOSSARY_ENABLED_KEY) === 'true';
+                filename = localStorage.getItem(SHARED_GLOSSARY_FILENAME_KEY) || '';
+            } catch (e) {}
+            return { enabled, filename };
+        }
+
+        function restoreSharedGlossarySettings() {
+            const settings = sharedGlossarySettings();
+            document.getElementById('sharedGlossaryEnabled').checked = settings.enabled;
+            document.getElementById('sharedGlossaryFilename').value = settings.filename;
+            updateSharedGlossaryButton();
+        }
+
+        function saveSharedGlossarySettings() {
+            const enabled = document.getElementById('sharedGlossaryEnabled').checked;
+            const filename = document.getElementById('sharedGlossaryFilename').value.trim();
+            if (enabled && !filename) {
+                document.getElementById('sharedGlossaryHelp').textContent = 'Enter a file name to enable the shared glossary.';
+                document.getElementById('sharedGlossaryFilename').focus();
+                return false;
+            }
+            document.getElementById('sharedGlossaryHelp').innerHTML = 'Files are read from and saved in the app’s <code>shared_glossaries</code> folder. A missing file is created when you click Start.';
+            try {
+                localStorage.setItem(SHARED_GLOSSARY_ENABLED_KEY, String(enabled));
+                localStorage.setItem(SHARED_GLOSSARY_FILENAME_KEY, filename);
+            } catch (e) {}
+            updateSharedGlossaryButton();
+            return true;
+        }
+
+        function updateSharedGlossaryButton() {
+            const button = document.getElementById('sharedGlossaryBtn');
+            if (!button) return;
+            const settings = sharedGlossarySettings();
+            button.setAttribute('aria-pressed', String(settings.enabled));
+            button.title = settings.enabled
+                ? `Enabled: ${settings.filename}`
+                : 'Configure a shared glossary';
+        }
+
+        function appendSharedGlossaryFields(formData) {
+            const settings = sharedGlossarySettings();
+            formData.append('sharedGlossaryEnabled', String(settings.enabled));
+            formData.append('sharedGlossaryFilename', settings.filename);
+        }
+
+        function glossaryTextForNextStep(text) {
+            return text.split('\n')
+                .filter(line => line.trim() !== '-----')
+                .map(line => /^\s*#\s*(?=.*(?:=>|=|\t))/.test(line)
+                    ? line.replace(/^\s*#\s*/, '')
+                    : line)
+                .join('\n');
+        }
+
+        function glossaryForNextStep() {
+            return glossaryTextForNextStep(document.getElementById('glossary').value);
+        }
 
         function rememberWorkspaceField(id) {
             const field = document.getElementById(id);
@@ -1422,9 +1516,9 @@
         }
 
         function forgetWorkspaceFields() {
-            for (const key of Object.values(WORKSPACE_KEYS)) {
-                try { localStorage.removeItem(key); } catch (e) {}
-            }
+            // New translation clears the source-language choice while keeping
+            // the target language and genre as the user's standing defaults.
+            try { localStorage.removeItem(WORKSPACE_KEYS.sourceLanguage); } catch (e) {}
         }
 
         function restoreWorkspaceFields() {
@@ -1726,7 +1820,7 @@
 
             text.split('\n').forEach((rawLine, index) => {
                 let line = rawLine.trim();
-                if (!line || line.startsWith('#')) return;
+                if (!line || line.startsWith('#') || line === '-----') return;
                 const lineNo = index + 1;
 
                 let source = '';
@@ -1790,11 +1884,12 @@
 
         function updateGlossaryStatus() {
             const text = document.getElementById('glossary').value;
+            const usableText = glossaryTextForNextStep(text);
             const statusEl = document.getElementById('glossaryStatus');
             const statusText = document.getElementById('glossaryStatusText');
             const copyPromptBtn = document.getElementById('copyGlossaryPromptBtn');
             const verifyFrontierBtn = document.getElementById('verifyGlossaryFrontierBtn');
-            if (!text.trim()) {
+            if (!usableText.trim()) {
                 statusText.textContent = '';
                 statusEl.classList.remove('has-errors');
                 copyPromptBtn.hidden = true;
@@ -1811,7 +1906,7 @@
             }
             const hasEntries = text.split('\n').some(line => {
                 const trimmed = line.trim();
-                return trimmed && !trimmed.startsWith('#');
+                return trimmed && trimmed !== '-----' && !trimmed.startsWith('#');
             });
             copyPromptBtn.hidden = !hasEntries;
             verifyFrontierBtn.hidden = !hasEntries;
@@ -1854,7 +1949,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        glossary: document.getElementById('glossary').value,
+                        glossary: glossaryForNextStep(),
                         sourceLanguage: document.getElementById('sourceLanguage').value,
                         targetLanguage: document.getElementById('targetLanguage').value,
                         // Sent so the frontier model can identify the work and
@@ -1926,7 +2021,7 @@
                         provider,
                         apiKey,
                         model,
-                        glossary: document.getElementById('glossary').value,
+                        glossary: glossaryForNextStep(),
                         sourceLanguage: document.getElementById('sourceLanguage').value,
                         targetLanguage: document.getElementById('targetLanguage').value,
                     }),
@@ -2038,15 +2133,28 @@
                 && reviewIssueReplacement(issue, currentText) !== null;
         }
 
+        function reviewIssueReversion(issue, currentText) {
+            if (!issue || typeof issue.span !== 'string' || typeof issue.replacement !== 'string') {
+                return null;
+            }
+            const span = issue.span;
+            const replacement = issue.replacement;
+            if (!span.trim() || !replacement.trim() || span === replacement) return null;
+            const position = currentText.indexOf(replacement);
+            if (position < 0) return null;
+            return {
+                text: currentText.slice(0, position) + span + currentText.slice(position + replacement.length),
+            };
+        }
+
         function syncReviewControls() {
             const chunk = currentReviewChunk();
             const hasChunk = !!chunk;
             const textarea = document.getElementById('reviewFinalText');
             const applyAllButton = document.getElementById('reviewApplyAllBtn');
+            const revertAllButton = document.getElementById('reviewRevertAllBtn');
             const saveButton = document.getElementById('reviewSaveBtn');
             const generateButton = document.getElementById('reviewGenerateBtn');
-            const cloudChunkButton = document.getElementById('reviewCloudChunkBtn');
-            const cloudAllButton = document.getElementById('reviewCloudAllBtn');
             const countSelect = document.getElementById('reviewAlternativeCount');
             const applyBlocked = !hasChunk || reviewIsSaving || reviewIsGenerating || reviewIsCloudDeciding;
             const currentText = textarea.value;
@@ -2054,20 +2162,11 @@
             const hasApplicableIssue = issues.some((issue, index) =>
                 reviewIssueCanApply(issue, currentText, index)
             );
-            const hasOpenCloudCases = (reviewData?.chunks || []).some(candidate =>
-                candidate.review_status !== 'resolved'
-                && (candidate.issues || []).some(issue =>
-                    reviewIssueReplacement(issue, candidate.final || '') !== null
-                )
-            );
 
             textarea.disabled = !hasChunk || reviewIsSaving;
             applyAllButton.disabled = applyBlocked || !hasApplicableIssue;
-            cloudChunkButton.disabled = !hasChunk || reviewIsDirty
-                || reviewIsSaving || reviewIsGenerating || reviewIsCloudDeciding
-                || chunk.review_status === 'resolved' || !hasApplicableIssue;
-            cloudAllButton.disabled = reviewIsDirty || reviewIsSaving
-                || reviewIsGenerating || reviewIsCloudDeciding || !hasOpenCloudCases;
+            revertAllButton.disabled = applyBlocked || !hasChunk
+                || currentText === (chunk?.draft || '');
             saveButton.disabled = !hasChunk || !reviewIsDirty || reviewIsSaving
                 || reviewIsGenerating || reviewIsCloudDeciding;
             generateButton.disabled = !hasChunk || reviewIsDirty || reviewIsSaving
@@ -2078,6 +2177,11 @@
                 const issueIndex = Number(button.dataset.issueIndex);
                 button.disabled = applyBlocked
                     || !reviewIssueCanApply(issues[issueIndex], currentText, issueIndex);
+            });
+            document.querySelectorAll('.review-signal-revert').forEach(button => {
+                const issueIndex = Number(button.dataset.issueIndex);
+                button.disabled = applyBlocked
+                    || reviewIssueReversion(issues[issueIndex], currentText) === null;
             });
             document.querySelectorAll('.review-use-btn').forEach(button => {
                 button.disabled = reviewIsDirty || reviewIsSaving
@@ -2198,6 +2302,17 @@
                 headingRow.appendChild(applyButton);
             }
             signal.appendChild(headingRow);
+            if (action) {
+                const revertButton = document.createElement('button');
+                revertButton.type = 'button';
+                revertButton.className = 'review-signal-revert';
+                revertButton.dataset.issueIndex = String(action.issueIndex);
+                revertButton.textContent = 'Revert';
+                revertButton.setAttribute('aria-label', `Revert proposed fix ${Number(action.issueIndex) + 1}`);
+                revertButton.title = `Revert “${action.replacement}” → “${action.span}”`;
+                revertButton.addEventListener('click', () => revertReviewIssue(action.issueIndex));
+                signal.appendChild(revertButton);
+            }
             lines.filter(Boolean).forEach(line => {
                 const detail = document.createElement('span');
                 detail.className = 'review-signal-detail';
@@ -2473,9 +2588,9 @@
             return notes.join(' · ');
         }
 
-        function commitReviewAppliedText(nextText, appliedIndexes) {
+        function commitReviewText(nextText, appliedIndexes, actionMessage) {
             const textarea = document.getElementById('reviewFinalText');
-            if (nextText === textarea.value || !appliedIndexes.length) return false;
+            if (nextText === textarea.value) return false;
             appliedIndexes.forEach(index => reviewAppliedIssueIndexes.add(Number(index)));
             textarea.value = nextText;
             reviewIsApplyingFixes = true;
@@ -2484,11 +2599,18 @@
             } finally {
                 reviewIsApplyingFixes = false;
             }
+            setReviewActionStatus(actionMessage);
+            return true;
+        }
+
+        function commitReviewAppliedText(nextText, appliedIndexes) {
+            if (!appliedIndexes.length) return false;
             const count = appliedIndexes.length;
-            setReviewActionStatus(
+            return commitReviewText(
+                nextText,
+                appliedIndexes,
                 `${count} proposed fix${count === 1 ? '' : 'es'} applied to Final · Save final to keep ${count === 1 ? 'it' : 'them'}.`
             );
-            return true;
         }
 
         function applyReviewIssue(issueIndex) {
@@ -2508,6 +2630,26 @@
             commitReviewAppliedText(edit.text, [index]);
         }
 
+        function revertReviewIssue(issueIndex) {
+            const chunk = currentReviewChunk();
+            if (!chunk || reviewIsSaving || reviewIsGenerating || reviewIsCloudDeciding) return;
+            const issues = Array.isArray(chunk.issues) ? chunk.issues : [];
+            const index = Number(issueIndex);
+            const textarea = document.getElementById('reviewFinalText');
+            const edit = reviewIssueReversion(issues[index], textarea.value);
+            if (!edit) {
+                setReviewActionStatus('This proposed fix is no longer present in Final.');
+                syncReviewControls();
+                return;
+            }
+            reviewAppliedIssueIndexes.delete(index);
+            commitReviewText(
+                edit.text,
+                [],
+                'Proposed fix reverted in Final · Save final to keep the change.'
+            );
+        }
+
         function applyAllReviewIssues() {
             const chunk = currentReviewChunk();
             if (!chunk || reviewIsSaving || reviewIsGenerating) return;
@@ -2525,6 +2667,20 @@
                 setReviewActionStatus('No proposed fixes can be applied to the current Final text.');
                 syncReviewControls();
             }
+        }
+
+        function revertAllReviewIssues() {
+            const chunk = currentReviewChunk();
+            if (!chunk || reviewIsSaving || reviewIsGenerating || reviewIsCloudDeciding) return;
+            const textarea = document.getElementById('reviewFinalText');
+            const draft = String(chunk.draft || '');
+            if (textarea.value === draft) return;
+            reviewAppliedIssueIndexes.clear();
+            commitReviewText(
+                draft,
+                [],
+                'Final restored to this chunk’s Draft · Save final to keep the change.'
+            );
         }
 
         async function saveReviewChunk({ candidateId = null } = {}) {
@@ -2950,6 +3106,7 @@
             // it is absent, so nothing needs sending for the second role.
             formData.append('model', document.getElementById('generalInstructModel').value);
             formData.append('genre', document.getElementById('genre').value);
+            appendSharedGlossaryFields(formData);
 
             button.disabled = true;
             status.classList.remove('has-errors');
@@ -3148,6 +3305,7 @@
             // book's terms can never leak into a newly selected document.
             try { localStorage.removeItem(LEGACY_WORKSPACE_GLOSSARY_KEY); } catch (e) {}
             restoreWorkspaceFields();
+            restoreSharedGlossarySettings();
             restoreSelectedDocument();
             applyThemeButton();
         });
@@ -3207,6 +3365,8 @@
             document.getElementById('translateBtn').addEventListener('click', handleSubmit);
             document.getElementById('refineHeaderBtn').addEventListener('click', handleRefine);
             document.getElementById('refineHeaderBtn').disabled = true;
+            document.getElementById('skipRefinementBtn').addEventListener('click', skipRefinement);
+            document.getElementById('skipRefinementBtn').disabled = true;
             document.getElementById('pauseJobBtn').addEventListener('click', toggleJobPause);
 
             document.getElementById('newTranslationBtn').addEventListener('click', () => {
@@ -3243,6 +3403,17 @@
                 rememberWorkspaceField('genre');
             });
             document.getElementById('prepareBtn').addEventListener('click', handlePrepare);
+            const sharedDialog = document.getElementById('sharedGlossaryDialog');
+            document.getElementById('sharedGlossaryBtn').addEventListener('click', () => {
+                const settings = sharedGlossarySettings();
+                document.getElementById('sharedGlossaryEnabled').checked = settings.enabled;
+                document.getElementById('sharedGlossaryFilename').value = settings.filename;
+                sharedDialog.showModal();
+            });
+            document.getElementById('cancelSharedGlossaryBtn').addEventListener('click', () => sharedDialog.close());
+            document.getElementById('saveSharedGlossaryBtn').addEventListener('click', () => {
+                if (saveSharedGlossarySettings()) sharedDialog.close();
+            });
             document.getElementById('copyGlossaryPromptBtn').addEventListener(
                 'click',
                 copyGlossaryVerificationPrompt,
@@ -3310,14 +3481,7 @@
                 }
             });
             document.getElementById('reviewApplyAllBtn').addEventListener('click', applyAllReviewIssues);
-            document.getElementById('reviewCloudChunkBtn').addEventListener(
-                'click',
-                () => reviewWithCloud(),
-            );
-            document.getElementById('reviewCloudAllBtn').addEventListener(
-                'click',
-                () => reviewWithCloud({ all: true }),
-            );
+            document.getElementById('reviewRevertAllBtn').addEventListener('click', revertAllReviewIssues);
             document.getElementById('reviewSaveBtn').addEventListener('click', () => saveReviewChunk());
             document.getElementById('reviewGenerateBtn').addEventListener('click', generateReviewAlternatives);
             document.getElementById('reviewAlternativeCount').addEventListener('change', (event) => {
@@ -3453,6 +3617,7 @@
             rememberDocument(file);
             startNewLogForDocument(file);
             document.getElementById('refineHeaderBtn').disabled = true;
+            document.getElementById('skipRefinementBtn').disabled = true;
             setPrepareEnabled(true);
 
             // Clear previous translation results
@@ -3789,7 +3954,7 @@
                         ${                            t.status === 'completed' ?
                             `<button class="header-action history-download-btn" data-translation-id="${t.id}" onclick="downloadTranslation(${t.id})">Download</button>` :
                             t.status === 'stage1_completed' ?
-                            `<button class="header-action" onclick="continueRefinementFromHistory(${t.id})">Continue</button>` :
+                            `<button class="header-action" onclick="continueRefinementFromHistory(${t.id})">Continue</button><button class="header-action" onclick="skipRefinement(${t.id})">Skip</button>` :
                             (t.status === 'interrupted' || t.status === 'error') ?
                             `<button class="header-action" onclick="resumeTranslationFromHistory(${t.id})">Resume</button>` :
                             t.running ?
@@ -3811,14 +3976,18 @@
                 alert('Please select a file or enter text');
                 return;
             }
+            currentTranslationOriginalFilename = fileToUpload.name;
             const formData = new FormData();
             formData.append('file', fileToUpload);
             formData.append('sourceLanguage', document.getElementById('sourceLanguage').value);
             formData.append('targetLanguage', document.getElementById('targetLanguage').value);
             formData.append('model', document.getElementById('model').value);
             formData.append('genre', document.getElementById('genre').value);
-            const glossaryText = document.getElementById('glossary').value;
+            const glossaryDraft = document.getElementById('glossary').value;
+            const glossaryText = glossaryTextForNextStep(glossaryDraft);
             formData.append('glossary', glossaryText);
+            formData.append('glossaryDraft', glossaryDraft);
+            appendSharedGlossaryFields(formData);
             // Start is the approval boundary for the editable glossary.
             // Persist that fact with the job rather than leaving every term
             // marked "proposed" after the user has launched translation.
@@ -3838,10 +4007,12 @@
 
             const translateBtn = document.getElementById('translateBtn');
             const refineHeaderBtn = document.getElementById('refineHeaderBtn');
+            const skipButton = document.getElementById('skipRefinementBtn');
             const progressSection = document.getElementById('progressSection');
 
             translateBtn.disabled = true;
             refineHeaderBtn.disabled = true;
+            skipButton.disabled = true;
             setTestButtonsEnabled('1', false);
             setTestButtonsEnabled('2', false);
             forgetActiveTranslation();
@@ -4066,7 +4237,27 @@
             } finally {
                 translateBtn.disabled = false;
                 refineHeaderBtn.disabled = false;
+                skipButton.disabled = false;
                 clearActiveJob();
+            }
+        }
+
+        async function skipRefinement(id = currentTranslationId) {
+            if (!id) return;
+            const skipButton = document.getElementById('skipRefinementBtn');
+            const continueButton = document.getElementById('refineHeaderBtn');
+            skipButton.disabled = true;
+            continueButton.disabled = true;
+            try {
+                const response = await fetch(`${API_URL}/skip-refinement/${Number(id)}`, { method: 'POST' });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Could not skip refinement');
+                await loadTranslationIntoWorkspace(Number(id), { scroll: false, silent: true });
+                loadTranslations();
+            } catch (error) {
+                alert(error.message);
+                skipButton.disabled = false;
+                continueButton.disabled = false;
             }
         }
 
@@ -4090,7 +4281,7 @@
             if (!reviewed && !found) {
                 status.textContent = refinement.verifier_model ? 'Ready' : 'Not started';
             } else {
-                status.textContent = `${found} found · ${applied} patched · ${changed}/${reviewed} chunks changed`;
+                status.textContent = `${found} found · ${applied} proposed · ${changed}/${reviewed} chunks have suggestions`;
             }
             status.classList.toggle('has-violations', rejected > 0 || failures > 0);
 
@@ -4176,16 +4367,18 @@
             document.getElementById('translationForm').reset();
             document.getElementById('fileInput').value = '';
             selectedFile = null;
+            currentTranslationOriginalFilename = null;
             clearWorkspaceGlossaryBinding();
             forgetActiveTranslation();
             canonicalSavedFinal = '';
             resetReviewDesk();
-            // New translation is the one moment the user asked for a clean
-            // form, so the kept fields and the kept book go too — otherwise
-            // both reappear on the next load of a workspace meant to be empty.
+            // New translation clears the source language and selected book;
+            // target language and genre remain the user's defaults.
             forgetWorkspaceFields();
+            restoreWorkspaceFields();
             forgetDocument();
             document.getElementById('refineHeaderBtn').disabled = true;
+            document.getElementById('skipRefinementBtn').disabled = true;
             setTestButtonsEnabled('1', false);
             setTestButtonsEnabled('2', false);
             translationPreviews = {};
@@ -4258,10 +4451,12 @@
         async function streamStage1Job(url, fetchInit) {
             const translateBtn = document.getElementById('translateBtn');
             const refineHeaderBtn = document.getElementById('refineHeaderBtn');
+            const skipButton = document.getElementById('skipRefinementBtn');
             const progressSection = document.getElementById('progressSection');
 
             translateBtn.disabled = true;
             refineHeaderBtn.disabled = true;
+            skipButton.disabled = true;
             draftReadyForRefine = false;
             setTestButtonsEnabled('1', false);
             setTestButtonsEnabled('2', false);
@@ -4371,6 +4566,7 @@
                 // This translation is no longer tied to a freshly selected file.
                 sourcePreviewToken += 1;
                 selectedFile = null;
+                currentTranslationOriginalFilename = t.filename || null;
                 clearWorkspaceGlossaryBinding();
                 forgetDocument();
                 rememberActiveTranslation(t.id);
@@ -4382,9 +4578,15 @@
                 canonicalSavedFinal = t.translated_text || '';
 
                 if (t.source_lang) document.getElementById('sourceLanguage').value = t.source_lang;
-                if (t.target_lang) document.getElementById('targetLanguage').value = t.target_lang;
+                if (t.target_lang) {
+                    document.getElementById('targetLanguage').value = t.target_lang;
+                    rememberWorkspaceField('targetLanguage');
+                }
                 if (t.model) document.getElementById('model').value = t.model;
-                if (t.genre) document.getElementById('genre').value = t.genre;
+                if (t.genre) {
+                    document.getElementById('genre').value = t.genre;
+                    rememberWorkspaceField('genre');
+                }
                 setPrepareEnabled(false);
                 updateModelNote();
                 // After the languages are in place: the glossary is scoped to
@@ -4419,6 +4621,8 @@
                 if (!document.getElementById('refineHeaderBtn').disabled) {
                     draftReadyForRefine = true;
                 }
+                document.getElementById('skipRefinementBtn').disabled =
+                    document.getElementById('refineHeaderBtn').disabled;
                 setExportButtonsEnabled(t.status === 'completed' && !!canonicalSavedFinal);
                 setTestButtonsEnabled('1', !document.getElementById('refineHeaderBtn').disabled);
                 setTestButtonsEnabled('2', t.status === 'completed');
@@ -4544,6 +4748,14 @@
                 .replaceAll("'", '&#039;');
         }
 
+        function originalUploadBaseName() {
+            const original = currentTranslationOriginalFilename || selectedFile?.name || 'translation';
+            const basename = original.split(/[\\/]/).pop() || 'translation';
+            const dot = basename.lastIndexOf('.');
+            const stem = dot > 0 ? basename.slice(0, dot) : basename;
+            return stem.replace(/[<>:"\/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '') || 'translation';
+        }
+
         function copyToClipboard() {
             const text = savedFinalForExport();
             if (text === null) return;
@@ -4564,7 +4776,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `translation_${Date.now()}.txt`;
+            a.download = `${originalUploadBaseName()}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -4623,7 +4835,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `translation_${Date.now()}.html`;
+            a.download = `${originalUploadBaseName()}.html`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -4663,7 +4875,7 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.epub`;
+                a.download = `${originalUploadBaseName()}.epub`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);

@@ -21,17 +21,16 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache, wraps
 from pathlib import Path
 from queue import Empty, Queue
+from urllib.parse import urlsplit
 
 try:
     import sacrebleu
 except ImportError:
     sacrebleu = None
 from flask import Flask, request, jsonify, Response, send_file, send_from_directory
-from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-CORS(app)
 
 import prompts  # noqa: E402
 from frontier_glossary import (  # noqa: E402
@@ -68,6 +67,7 @@ def is_translategemma(model_name: Optional[str]) -> bool:
 # wherever the process happens to be standing.
 UPLOAD_FOLDER = 'uploads'
 TRANSLATIONS_FOLDER = 'translations'
+SHARED_GLOSSARIES_FOLDER = 'shared_glossaries'
 STATIC_FOLDER = str(Path(__file__).resolve().parent / 'static')
 DB_PATH = 'translations.db'
 CACHE_DB_PATH = 'cache.db'
@@ -86,8 +86,137 @@ from monitoring import (  # noqa: E402
 )
 
 # Create necessary directories
-for folder in [UPLOAD_FOLDER, TRANSLATIONS_FOLDER, STATIC_FOLDER, LOG_FOLDER]:
+for folder in [UPLOAD_FOLDER, TRANSLATIONS_FOLDER, SHARED_GLOSSARIES_FOLDER, STATIC_FOLDER, LOG_FOLDER]:
     os.makedirs(folder, exist_ok=True)
+
+GLOSSARY_SECTION_MARKER = '-----'
+
+
+def glossary_text_without_marker(text: str) -> str:
+    """Remove the workspace-only divider before parsing or saving glossary text."""
+    return '\n'.join(
+        line for line in (text or '').splitlines()
+        if line.strip() != GLOSSARY_SECTION_MARKER
+    )
+
+
+def _unmark_glossary_entry(line: str) -> str:
+    stripped = line.lstrip()
+    if stripped.startswith('$'):
+        candidate = stripped[1:].lstrip()
+        if '=>' in candidate or '=' in candidate or '\t' in candidate:
+            return candidate
+    return line
+
+
+def glossary_text_for_pipeline(text: str) -> str:
+    """Remove workspace markers while keeping text-specific entries usable."""
+    return '\n'.join(
+        _unmark_glossary_entry(line)
+        for line in glossary_text_without_marker(text).splitlines()
+    )
+
+
+def _glossary_entry(line: str):
+    """Return (key, is_text_specific) for a valid entry line, or None."""
+    if not line.strip() or line.strip() == GLOSSARY_SECTION_MARKER:
+        return None
+    text_specific = line.lstrip().startswith('$')
+    candidate = _unmark_glossary_entry(line)
+    try:
+        terms = TerminologyManager.from_text(candidate)
+    except ValueError:
+        return None
+    if len(terms.terms) != 1:
+        return None
+    return terms.terms[0].source.strip().casefold(), text_specific
+
+
+def shared_glossary_path(filename: str) -> Path:
+    """Resolve one shared glossary name and reject paths outside its folder."""
+    name = (filename or '').strip()
+    if not name:
+        raise ValueError('Choose a shared glossary file name')
+    if Path(name).name != name or name in {'.', '..'}:
+        raise ValueError('Enter a file name inside the shared glossaries folder')
+    if not name.lower().endswith('.txt'):
+        name += '.txt'
+    root = Path(SHARED_GLOSSARIES_FOLDER).resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError('Shared glossary must be inside the shared glossaries folder')
+    return path
+
+
+def read_shared_glossary(filename: str) -> str:
+    path = shared_glossary_path(filename)
+    try:
+        return glossary_text_without_marker(path.read_text(encoding='utf-8')) if path.exists() else ''
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f'Could not read shared glossary: {exc}') from exc
+
+
+def write_shared_glossary(filename: str, glossary: str) -> None:
+    path = shared_glossary_path(filename)
+    try:
+        existing = path.read_text(encoding='utf-8') if path.exists() else ''
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f'Could not read shared glossary: {exc}') from exc
+
+    entries = {}
+    order = []
+    for line in existing.splitlines():
+        parsed = _glossary_entry(line)
+        if parsed and not parsed[1]:
+            key = parsed[0]
+            if key not in entries:
+                order.append(key)
+            entries[key] = line
+    for line in (glossary or '').splitlines():
+        if line.strip() == GLOSSARY_SECTION_MARKER:
+            continue
+        parsed = _glossary_entry(line)
+        if parsed and not parsed[1]:
+            key = parsed[0]
+            if key not in entries:
+                order.append(key)
+            entries[key] = line
+    clean_glossary = '\n'.join(entries[key] for key in order).rstrip()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(clean_glossary + ('\n' if clean_glossary else ''), encoding='utf-8')
+    except OSError as exc:
+        raise ValueError(f'Could not write shared glossary: {exc}') from exc
+
+
+def merge_shared_glossary(generated: str, shared: str) -> str:
+    """Use shared renderings only for keys present in the prepared glossary."""
+    generated_lines = [line for line in generated.splitlines() if line.strip()]
+    prepared = {}
+    for line in generated_lines:
+        parsed = _glossary_entry(line)
+        if parsed:
+            prepared[parsed[0]] = parsed[1]
+
+    shared_by_key = {}
+    for line in shared.splitlines():
+        parsed = _glossary_entry(line)
+        if parsed and not parsed[1]:
+            shared_by_key[parsed[0]] = line
+
+    selected = []
+    for key, is_text_specific in prepared.items():
+        if not is_text_specific and key in shared_by_key:
+            selected.append(shared_by_key[key])
+    if not selected:
+        return '\n'.join(generated_lines)
+
+    shared_keys = {key for key in prepared if key in shared_by_key and not prepared[key]}
+    generated_only = [
+        line for line in generated_lines
+        if not (_glossary_entry(line) and _glossary_entry(line)[0] in shared_keys)
+    ]
+    return '\n'.join([*generated_only, GLOSSARY_SECTION_MARKER, *selected])
 
 # The chunk cache and the glossary rules are each their own module; only
 # the one live cache instance stays here.
@@ -1986,10 +2115,10 @@ class BookTranslator(QualityTests):
                     stage2_cache_model = self._stage2_cache_model(
                         glossary_fingerprint
                     )
-                    # Check cache
-                    cached_result = cache.get_cached_translation(
-                        original_chunk, source_lang, target_lang, stage2_cache_model
-                    )
+                    # Refinement results now contain suggestions, not a new
+                    # final translation. Avoid reusing legacy cached output:
+                    # it has no review evidence and may have been auto-applied.
+                    cached_result = None
                     stage2_warning = None
                     stage2_details = {}
                     if cached_result:
@@ -2049,34 +2178,19 @@ class BookTranslator(QualityTests):
                             ),
                         )
 
-                        # Don't cache a fallback result — a draft cached as if
-                        # it were a real refinement would keep being reused on
-                        # every future run instead of retrying the model.
-                        if stage2_warning is None:
-                            cache.cache_translation(
-                                original_chunk, final_translation, draft_chunk,
-                                source_lang, target_lang, stage2_cache_model
-                            )
                         time.sleep(0.5)
 
-                    # Preserve the exact-term guarantee when a refinement
-                    # result comes from cache or the review model lets a
-                    # literal source form through.
-                    final_translation, exact_replacements = self.terminology.enforce_exact_source_forms(
-                        final_translation
-                    )
-                    if exact_replacements:
-                        logger.translation_logger.info(
-                            "Stage 2 enforced %s exact glossary source-form replacement(s) in chunk %s",
-                            sum(item['count'] for item in exact_replacements), i,
-                        )
-
-                    final_translations.append(final_translation)
+                    # Keep Final identical to Draft. The located replacements
+                    # remain in review_details for explicit human application.
+                    suggested_translation = final_translation
+                    final_translation = draft_chunk
+                    final_translations.append(draft_chunk)
                     terminology_violations = self.terminology.exact_violations(
                         original_chunk, final_translation
                     )
                     final_violation_count += len(terminology_violations)
-                    stage2_details['exact_replacements'] = exact_replacements
+                    stage2_details['suggested_translation'] = suggested_translation
+                    stage2_details['exact_replacements'] = []
                     stage2_details['terminology_violations'] = terminology_violations
                     save_chunk_review(
                         translation_id,
@@ -2157,7 +2271,7 @@ class BookTranslator(QualityTests):
                         (json.dumps(final_chapters, ensure_ascii=False), translation_id),
                     )
 
-            # Mark translation as completed. final_chunks is rewritten here as
+            # Mark translation as completed with the untouched draft. final_chunks is rewritten here as
             # well as per chunk, because an empty trailing chunk (a title page
             # in an EPUB) skips the per-chunk write and would otherwise leave
             # the stored list one entry short of the final text.
@@ -3785,6 +3899,23 @@ def _cleanup_failed_translations(days: int = 7):
 # Health checking middleware
 @app.before_request
 def check_ollama():
+    host = request.host
+    if host.startswith('['):
+        hostname = host[1:].split(']', 1)[0].lower()
+    else:
+        hostname = host.split(':', 1)[0].lower()
+    if request.remote_addr not in {'127.0.0.1', '::1'} or hostname not in {
+        'localhost', '127.0.0.1', '::1',
+    }:
+        return jsonify({'error': 'This local application only accepts requests from this computer'}), 403
+    origin = request.headers.get('Origin')
+    if origin:
+        origin_parts = urlsplit(origin)
+        if (origin_parts.scheme not in {'http', 'https'}
+                or origin_parts.hostname not in {'localhost', '127.0.0.1', '::1'}
+                or origin_parts.netloc.lower() != host.lower()):
+            return jsonify({'error': 'Cross-origin requests are not accepted'}), 403
+
     # Managing locally saved tasks must remain possible even when Ollama is
     # stopped, so a user can clear old or failed translations.
     exempt_endpoints = {
@@ -3848,9 +3979,10 @@ def get_glossary_verification_prompt():
     if not source_language or not target_language:
         return jsonify({'error': 'Source and target languages are required'}), 400
 
+    glossary = glossary_text_for_pipeline(data['glossary'])
     entities = '\n'.join(
         line.strip()
-        for line in data['glossary'].splitlines()
+        for line in glossary.splitlines()
         if line.strip() and not line.lstrip().startswith('#')
     )
     if not entities:
@@ -3945,6 +4077,9 @@ def verify_glossary_with_frontier():
     submitted_key = data.get('apiKey')
     submitted_model = data.get('model')
     if not isinstance(glossary, str) or not glossary.strip():
+        return jsonify({'error': 'Add at least one glossary entry first'}), 400
+    glossary = glossary_text_for_pipeline(glossary)
+    if not glossary.strip():
         return jsonify({'error': 'Add at least one glossary entry first'}), 400
     if not isinstance(source_code, str) or not isinstance(target_code, str):
         return jsonify({'error': 'Source and target languages are required'}), 400
@@ -5160,14 +5295,7 @@ def source_preview():
 @app.route('/prepare', methods=['POST'])
 @with_error_handling
 def prepare():
-    """STAGE 0: read the book and propose the contract the translation will
-    run under — one agreed rendering per recurring proper noun.
-
-    Deliberately does not create a translation row or translate anything.
-    The glossary comes back as editable text and is then submitted with Start
-    like any hand-written one, so what actually reaches the model is always
-    what the user saw and approved.
-    """
+    """Extract and render glossary candidates, streaming stage progress."""
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
 
@@ -5185,8 +5313,17 @@ def prepare():
         # halfway through Prepare. So the interface offers one choice, and a
         # separate entity model stays available to anything calling /prepare
         # directly.
-        entity_model_name = request.form.get('entityModel') or model_name
+        shared_glossary_enabled = request.form.get('sharedGlossaryEnabled') == 'true'
+        shared_glossary_filename = request.form.get('sharedGlossaryFilename', '')
+        try:
+            shared_glossary = (
+                read_shared_glossary(shared_glossary_filename)
+                if shared_glossary_enabled else ''
+            )
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
 
+        entity_model_name = request.form.get('entityModel') or model_name
         if not all([source_lang, target_lang, model_name]):
             return jsonify({'error': 'Missing required parameters'}), 400
         for name in (model_name, entity_model_name):
@@ -5198,7 +5335,9 @@ def prepare():
                 )}), 400
 
         try:
-            text, _, _, _, _, filepath = read_uploaded_book(request.files['file'], source_lang)
+            text, _, _, _, _, filepath = read_uploaded_book(
+                request.files['file'], source_lang,
+            )
         except UploadError as e:
             return jsonify({'error': str(e)}), 400
 
@@ -5214,7 +5353,8 @@ def prepare():
             index = PREPARE_STAGE_ORDER.index(stage)
             base = sum(PREPARE_STAGE_WEIGHTS[s] for s in PREPARE_STAGE_ORDER[:index])
             progress = round(
-                (base + PREPARE_STAGE_WEIGHTS[stage] * min(1.0, max(0.0, frac))) * 100, 1
+                (base + PREPARE_STAGE_WEIGHTS[stage] * min(1.0, max(0.0, frac))) * 100,
+                1,
             )
             event = {'progress': progress, 'stage': stage, 'prepare_id': prepare_id}
             if message:
@@ -5243,6 +5383,7 @@ def prepare():
                         'error': str(e),
                     })
                     return
+
                 run_pause_checkpoint(prepare_id)
                 extracted = len(candidates)
                 emit_prepare_stage(
@@ -5254,8 +5395,10 @@ def prepare():
                     else BookTranslator(model_name=entity_model_name)
                 )
                 run_pause_checkpoint(prepare_id)
-                emit_prepare_stage('adjudicating', 0.0,
-                                   'Resolving which source forms name one entity…')
+                emit_prepare_stage(
+                    'adjudicating', 0.0,
+                    'Resolving which source forms name one entity…',
+                )
                 candidates, cluster_decisions = resolver.adjudicate_entity_clusters(
                     text, source_lang, candidates, review_queue,
                 )
@@ -5264,8 +5407,7 @@ def prepare():
                     'adjudicating', 1.0,
                     f"Adjudicated {len(cluster_decisions)} cluster decision(s)",
                 )
-                emit_prepare_stage('rendering', 0.0,
-                                   'Proposing target-language renderings…')
+                emit_prepare_stage('rendering', 0.0, 'Proposing target-language renderings…')
                 records = translator.propose_proper_noun_records(
                     text, source_lang, target_lang, genre, candidates=candidates,
                     progress_callback=progress_with_pause('rendering'),
@@ -5284,7 +5426,7 @@ def prepare():
                     f"Stage 0 finished: {len(records)} glossary record(s) proposed, "
                     f"{len(rendering_conflicts)} rendering conflict(s) to review"
                 )
-                # Serialised in the glossary's own text format, so the proposal
+                # Serialized in the glossary's own text format, so the proposal
                 # lands in the existing textarea and goes through the same parser
                 # and the same validation as anything typed by hand. Stage 0 has
                 # no basis for a note, so it proposes none.
@@ -5294,6 +5436,9 @@ def prepare():
                     )
                     for record in records
                 )
+                if shared_glossary_enabled:
+                    glossary = merge_shared_glossary(glossary, shared_glossary)
+
                 proposed = {record['source'].casefold() for record in records}
                 yield {
                     'progress': 100.0,
@@ -5308,10 +5453,16 @@ def prepare():
                         # What the model ruled on the clustering, and what it
                         # found that extraction did not — both previously invisible.
                         'cluster_decisions': cluster_decisions,
-                        'clusters_confirmed': sum(1 for d in cluster_decisions if d['same_entity']),
-                        'clusters_split': sum(1 for d in cluster_decisions if not d['same_entity']),
+                        'clusters_confirmed': sum(
+                            1 for d in cluster_decisions if d['same_entity']
+                        ),
+                        'clusters_split': sum(
+                            1 for d in cluster_decisions if not d['same_entity']
+                        ),
                         'added_by_model': sorted(
-                            proposed - {record['surface'].casefold() for record in candidates}
+                            proposed - {
+                                record['surface'].casefold() for record in candidates
+                            }
                         ),
                     },
                     'rendering_conflicts': rendering_conflicts,
@@ -5360,9 +5511,12 @@ def translate():
         target_lang = request.form.get('targetLanguage')
         model_name = request.form.get('model')
         genre = request.form.get('genre', 'unknown')  # Get genre from request
+        shared_glossary_enabled = request.form.get('sharedGlossaryEnabled') == 'true'
+        shared_glossary_filename = request.form.get('sharedGlossaryFilename', '')
+        glossary_for_run = glossary_text_for_pipeline(request.form.get('glossary', ''))
         try:
             terminology = TerminologyManager.from_text(
-                request.form.get('glossary', '')
+                glossary_for_run
             )
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
@@ -5382,6 +5536,18 @@ def translate():
         except UploadError as e:
             return jsonify({'error': str(e)}), 400
         filename = secure_filename(file.filename)
+
+        if shared_glossary_enabled:
+            try:
+                write_shared_glossary(
+                    shared_glossary_filename,
+                    request.form.get('glossaryDraft', request.form.get('glossary', '')),
+                )
+            except ValueError as e:
+                if filepath and os.path.exists(filepath):
+                    os.remove(filepath)
+                    filepath = None
+                return jsonify({'error': str(e)}), 400
 
         with sqlite3.connect(DB_PATH) as conn:
             cur = conn.execute('''
@@ -5423,7 +5589,7 @@ def translate():
                 _store_workspace_glossary(
                     conn,
                     (document_fingerprint, source_lang, target_lang),
-                    request.form.get('glossary', '')[:MAX_WORKSPACE_GLOSSARY_LENGTH],
+                    request.form.get('glossaryDraft', request.form.get('glossary', ''))[:MAX_WORKSPACE_GLOSSARY_LENGTH],
                 )
 
         translator = BookTranslator(model_name=model_name)
@@ -5619,6 +5785,49 @@ def stream_translation_progress(translation_id):
         mimetype='text/event-stream',
         headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
     )
+
+
+@app.route('/skip-refinement/<int:translation_id>', methods=['POST'])
+@with_error_handling
+def skip_refinement(translation_id):
+    """Complete a translation by promoting the saved draft unchanged."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            'SELECT status, original_chunks, draft_chunks, chunk_chapter_map, source_format '
+            'FROM translations WHERE id = ?',
+            (translation_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({'error': 'Translation not found'}), 404
+        if is_run_active(translation_id):
+            return jsonify({'error': 'This translation is still running'}), 409
+        if row['status'] not in ('stage1_completed', 'completed'):
+            return jsonify({'error': 'A complete draft is required to skip refinement'}), 400
+        original_chunks = _json_list(row['original_chunks'])
+        draft_chunks = _json_list(row['draft_chunks'])
+        if not draft_chunks or len(draft_chunks) < len(original_chunks):
+            return jsonify({'error': 'The draft is incomplete; resume translation before skipping refinement'}), 400
+        translated_text = '\n\n'.join(draft_chunks)
+        translated_chapters = None
+        if row['source_format'] == 'epub':
+            chapter_map = _json_list(row['chunk_chapter_map'])
+            translated_chapters = json.dumps(
+                _translated_chapters_from_chunks(draft_chunks, chapter_map),
+                ensure_ascii=False,
+            )
+        conn.execute(
+            '''UPDATE translations
+               SET status = 'completed', progress = 100,
+                   final_chunks = ?, translated_text = ?, translated_chapters = ?,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?''',
+            (
+                json.dumps(draft_chunks, ensure_ascii=False), translated_text,
+                translated_chapters, translation_id,
+            ),
+        )
+    return jsonify({'status': 'completed', 'translation_id': translation_id})
 
 
 @app.route('/refine/<int:translation_id>', methods=['POST'])
@@ -6161,6 +6370,7 @@ def download_translation(translation_id):
             return jsonify({'error': 'Translation not found or not completed'}), 404
 
         filename, translated_text, source_format, translated_chapters, book_title, book_author = result
+        download_stem = os.path.splitext(os.path.basename(filename))[0] or 'translation'
 
         if source_format == 'epub' and translated_chapters:
             chapters = json.loads(translated_chapters)
@@ -6169,7 +6379,7 @@ def download_translation(translation_id):
                 title=book_title or os.path.splitext(filename)[0],
                 author=book_author or 'Unknown Author',
             )
-            download_name = f"translated_{os.path.splitext(filename)[0]}.epub"
+            download_name = f"{download_stem}.epub"
             return send_file(
                 BytesIO(epub_bytes),
                 as_attachment=True,
@@ -6180,7 +6390,7 @@ def download_translation(translation_id):
         return send_file(
             BytesIO((translated_text or '').encode('utf-8')),
             as_attachment=True,
-            download_name=f'translated_{filename}',
+            download_name=f'{download_stem}.txt',
             mimetype='text/plain; charset=utf-8',
         )
 
@@ -6304,7 +6514,7 @@ if __name__ == "__main__":
 
     # Start the Flask application
     app.run(
-        host='0.0.0.0',
+        host='127.0.0.1',
         port=int(os.environ.get('PORT', 5001)),
         debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     )

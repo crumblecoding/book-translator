@@ -111,7 +111,7 @@ The glossary belongs only to this book and language pair. If you configure an op
 
 After **→ 3 CONTINUE** finishes, open **Review desk**. Each chunk shows the original source, the first draft, and the editable final translation next to each other.
 
-Proposed fixes can be applied manually, decided and saved by the configured cloud provider for one chunk, or processed for every open chunk with **Review all automatically**. Cloud decisions are restricted to apply/keep for the existing proposed fixes; they cannot rewrite the chunk or invent another option.
+Continue records refinement suggestions while leaving Final unchanged. Apply a proposed fix or all applicable fixes for the selected chunk, then save Final. **Revert all** restores that chunk’s original draft. Skip Continue to use the draft as the final translation and download it.
 
 ```text
 Source → Draft → Final → Save final → Download

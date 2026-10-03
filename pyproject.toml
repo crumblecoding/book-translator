@@ -18,12 +18,4 @@
 pythonpath = ["src"]
 testpaths = ["tests"]
 
-[tool.ruff]
-target-version = "py310"  # The floor launch.py enforces and the README promises.
-
-[tool.ruff.lint]
-# The same line CI draws with flake8: only the checks that mean "this is
-# broken" — syntax errors, undefined names, unused imports and variables — and
-# none that mean "this is not to my taste". A style rule that fires on every
-# run is a rule that teaches people to ignore the linter.
 select = ["E9", "F"]
